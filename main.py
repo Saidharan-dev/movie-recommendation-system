@@ -1,35 +1,52 @@
-# main.py
+import streamlit as st
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-# Load Dataset
-df = pd.read_csv('data/movies.csv')
-df = df[['title', 'overview']].dropna()
+# Set up page
+st.set_page_config(page_title="Movie Recommender", layout="centered")
 
-# Vectorize Overview Text
-tfidf = TfidfVectorizer(stop_words='english')
-tfidf_matrix = tfidf.fit_transform(df['overview'])
+# Title
+st.title("🎬 Movie Recommendation System")
+st.markdown("Type a movie title and get similar recommendations based on its description!")
 
-# Compute Similarity Matrix
-similarity = cosine_similarity(tfidf_matrix, tfidf_matrix)
+# Load the dataset
+@st.cache_data
+def load_data():
+    df = pd.read_csv("data/movies.csv")
+    df.dropna(subset=["title", "overview"], inplace=True)
+    return df
 
-# Recommendation Function
-def recommend(movie_name):
-    movie_name = movie_name.lower()
-    if movie_name not in df['title'].str.lower().values:
-        return ["Movie not found in database."]
+df = load_data()
 
-    idx = df[df['title'].str.lower() == movie_name].index[0]
-    scores = list(enumerate(similarity[idx]))
-    scores = sorted(scores, key=lambda x: x[1], reverse=True)[1:6]
-    recommended = [df.iloc[i[0]]['title'] for i in scores]
-    return recommended
+# Vectorize overviews
+@st.cache_resource
+def compute_similarity():
+    tfidf = TfidfVectorizer(stop_words='english')
+    tfidf_matrix = tfidf.fit_transform(df['overview'])
+    return cosine_similarity(tfidf_matrix, tfidf_matrix)
 
-# Example
-if __name__ == '__main__':
-    movie = input("Enter a movie name: ")
-    results = recommend(movie)
-    print("\nRecommended movies:")
-    for i, title in enumerate(results, 1):
-        print(f"{i}. {title}")
+similarity_matrix = compute_similarity()
+
+# Recommendation function
+def recommend(title):
+    title = title.lower().strip()
+    if title not in df['title'].str.lower().values:
+        return ["❌ Movie not found. Please check the spelling."]
+    
+    idx = df[df['title'].str.lower() == title].index[0]
+    sim_scores = list(enumerate(similarity_matrix[idx]))
+    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:6]  # top 5 excluding itself
+    return [df.iloc[i[0]]['title'] for i in sim_scores]
+
+# Input box
+user_input = st.text_input("Enter a movie title:")
+
+if st.button("Recommend"):
+    if not user_input.strip():
+        st.warning("⚠️ Please enter a valid movie title.")
+    else:
+        results = recommend(user_input)
+        st.subheader("🔍 Top 5 Recommendations:")
+        for i, movie in enumerate(results, 1):
+            st.write(f"{i}. {movie}")
